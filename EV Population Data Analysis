@@ -1,1101 +1,373 @@
-{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 1,
-   "id": "efe47631",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:40.926236Z",
-     "iopub.status.busy": "2025-12-14T01:44:40.925825Z",
-     "iopub.status.idle": "2025-12-14T01:44:41.460524Z",
-     "shell.execute_reply": "2025-12-14T01:44:41.459431Z"
+# %% [code]
+# IMPORTANT: RUN THIS CELL IN ORDER TO IMPORT YOUR KAGGLE DATA SOURCES,
+# THEN FEEL FREE TO DELETE THIS CELL.
+# NOTE: THIS NOTEBOOK ENVIRONMENT DIFFERS FROM KAGGLE'S PYTHON
+# ENVIRONMENT SO THERE MAY BE MISSING LIBRARIES USED BY YOUR
+# NOTEBOOK.
+import kagglehub
+sanjanaonteru_electric_vehicle_population_data_path = kagglehub.dataset_download('sanjanaonteru/electric-vehicle-population-data')
+
+print('Data source import complete.')
+
+# %% [code]
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import warnings
+warnings.filterwarnings('ignore')
+
+# %% [code]
+# Set style
+plt.style.use('dark_background')
+sns.set_palette("husl")
+
+# %% [code]
+# Load the data
+df = pd.read_csv(f"{sanjanaonteru_electric_vehicle_population_data_path}/Electric_Vehicle_Population_Data.csv")
+
+# %% [code]
+# Alternative: If the file has a different name, try:
+# df = pd.read_csv('/kaggle/input/electric-vehicle-population-data/electric-vehicle-population-data.csv')
+# Or list files to find exact name:
+# import os
+# print(os.listdir('/kaggle/input/electric-vehicle-population-data/'))
+
+# Data preprocessing
+df['Model Year'] = pd.to_numeric(df['Model Year'], errors='coerce')
+df.columns = df.columns.str.strip()
+
+print("🚗 Washington State Electric Vehicle Population Analysis")
+print("="*70)
+print(f"📊 Total EVs in Dataset: {len(df):,}")
+print(f"📅 Data Range: {df['Model Year'].min():.0f} - {df['Model Year'].max():.0f}")
+print(f"🏭 Unique Manufacturers: {df['Make'].nunique()}")
+print(f"🚙 Unique Models: {df['Model'].nunique()}")
+print("="*70)
+
+# %% [code]
+
+# ============================================================================
+# 1. STUNNING GROWTH TIMELINE WITH PLOTLY
+# ============================================================================
+print("\n🎨 Creating interactive growth timeline...")
+
+yearly_growth = df.groupby('Model Year').size().reset_index(name='count')
+yearly_growth['cumulative'] = yearly_growth['count'].cumsum()
+
+fig = make_subplots(
+    rows=2, cols=1,
+    subplot_titles=('📈 Annual EV Registrations', '📊 Cumulative EV Population'),
+    vertical_spacing=0.12,
+    specs=[[{"secondary_y": False}], [{"secondary_y": False}]]
+)
+
+# Annual registrations with gradient
+fig.add_trace(
+    go.Bar(
+        x=yearly_growth['Model Year'],
+        y=yearly_growth['count'],
+        name='Annual Registrations',
+        marker=dict(
+            color=yearly_growth['count'],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Count", y=0.75, len=0.4)
+        ),
+        text=yearly_growth['count'],
+        textposition='outside',
+        hovertemplate='<b>Year %{x}</b><br>New EVs: %{y:,}<extra></extra>'
+    ),
+    row=1, col=1
+)
+
+# Cumulative with smooth line
+fig.add_trace(
+    go.Scatter(
+        x=yearly_growth['Model Year'],
+        y=yearly_growth['cumulative'],
+        name='Cumulative Total',
+        mode='lines+markers',
+        line=dict(color='#FF6B6B', width=4, shape='spline'),
+        marker=dict(size=8, symbol='diamond'),
+        fill='tozeroy',
+        fillcolor='rgba(255, 107, 107, 0.2)',
+        hovertemplate='<b>Year %{x}</b><br>Total EVs: %{y:,}<extra></extra>'
+    ),
+    row=2, col=1
+)
+
+fig.update_xaxes(title_text="Model Year", row=2, col=1)
+fig.update_yaxes(title_text="New Registrations", row=1, col=1)
+fig.update_yaxes(title_text="Cumulative EVs", row=2, col=1)
+
+fig.update_layout(
+    height=800,
+    title_text="⚡ Washington State EV Growth Story (1999-2026)",
+    title_font_size=24,
+    showlegend=True,
+    template='plotly_dark',
+    hovermode='x unified'
+)
+
+fig.show()
+
+
+# %% [code]
+# ============================================================================
+# 2. MAGNIFICENT MANUFACTURER DOMINANCE SUNBURST
+# ============================================================================
+print("\n🎨 Creating manufacturer hierarchy visualization...")
+
+# Get top makes and their models
+top_makes = df['Make'].value_counts().head(10)
+make_model_data = []
+
+for make in top_makes.index:
+    make_df = df[df['Make'] == make]
+    make_count = len(make_df)
+    make_model_data.append({
+        'labels': make,
+        'parents': '',
+        'values': make_count,
+        'type': 'make'
+    })
+    
+    top_models = make_df['Model'].value_counts().head(5)
+    for model, count in top_models.items():
+        make_model_data.append({
+            'labels': model,
+            'parents': make,
+            'values': count,
+            'type': 'model'
+        })
+
+sunburst_df = pd.DataFrame(make_model_data)
+
+fig = go.Figure(go.Sunburst(
+    labels=sunburst_df['labels'],
+    parents=sunburst_df['parents'],
+    values=sunburst_df['values'],
+    branchvalues="total",
+    marker=dict(
+        colorscale='Rainbow',
+        cmid=sunburst_df['values'].mean(),
+        line=dict(color='white', width=2)
+    ),
+    hovertemplate='<b>%{label}</b><br>Count: %{value:,}<br>Percentage: %{percentParent}<extra></extra>'
+))
+
+fig.update_layout(
+    title="🌟 EV Manufacturer & Model Hierarchy",
+    title_font_size=24,
+    height=700,
+    template='plotly_dark'
+)
+
+fig.show()
+
+# %% [code]
+# ============================================================================
+# 3. EPIC GEOGRAPHIC HEATMAP
+# ============================================================================
+print("\n🎨 Creating geographic distribution map...")
+
+county_stats = df['County'].value_counts().head(20).reset_index()
+county_stats.columns = ['County', 'Count']
+county_stats['Percentage'] = (county_stats['Count'] / len(df) * 100).round(2)
+
+fig = px.treemap(
+    county_stats,
+    path=['County'],
+    values='Count',
+    color='Count',
+    color_continuous_scale='Plasma',
+    title='🗺️ EV Distribution by County (Top 20)',
+    hover_data={'Count': ':,', 'Percentage': ':.2f'}
+)
+
+fig.update_traces(
+    textposition='middle center',
+    textfont_size=14,
+    marker=dict(line=dict(color='white', width=3))
+)
+
+fig.update_layout(
+    height=600,
+    title_font_size=24,
+    template='plotly_dark'
+)
+
+fig.show()
+
+
+# %% [code]
+
+# ============================================================================
+# 4. VEHICLE TYPE EVOLUTION - ANIMATED
+# ============================================================================
+print("\n🎨 Creating vehicle type evolution animation...")
+
+ev_type_year = df.groupby(['Model Year', 'Electric Vehicle Type']).size().reset_index(name='count')
+ev_type_year = ev_type_year[ev_type_year['Model Year'] >= 2010]
+
+fig = px.bar(
+    ev_type_year,
+    x='Model Year',
+    y='count',
+    color='Electric Vehicle Type',
+    title='🔋 BEV vs PHEV Adoption Over Time',
+    labels={'count': 'Number of Vehicles', 'Model Year': 'Year'},
+    color_discrete_map={
+        'Battery Electric Vehicle (BEV)': '#00D9FF',
+        'Plug-in Hybrid Electric Vehicle (PHEV)': '#FF00E5'
     },
-    "papermill": {
-     "duration": 0.541682,
-     "end_time": "2025-12-14T01:44:41.462425",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:40.920743",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "Data source import complete.\n"
-     ]
-    }
-   ],
-   "source": [
-    "# IMPORTANT: RUN THIS CELL IN ORDER TO IMPORT YOUR KAGGLE DATA SOURCES,\n",
-    "# THEN FEEL FREE TO DELETE THIS CELL.\n",
-    "# NOTE: THIS NOTEBOOK ENVIRONMENT DIFFERS FROM KAGGLE'S PYTHON\n",
-    "# ENVIRONMENT SO THERE MAY BE MISSING LIBRARIES USED BY YOUR\n",
-    "# NOTEBOOK.\n",
-    "import kagglehub\n",
-    "sanjanaonteru_electric_vehicle_population_data_path = kagglehub.dataset_download('sanjanaonteru/electric-vehicle-population-data')\n",
-    "\n",
-    "print('Data source import complete.')"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 2,
-   "id": "ce5209c8",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:41.469961Z",
-     "iopub.status.busy": "2025-12-14T01:44:41.469653Z",
-     "iopub.status.idle": "2025-12-14T01:44:47.100868Z",
-     "shell.execute_reply": "2025-12-14T01:44:47.099698Z"
-    },
-    "papermill": {
-     "duration": 5.637188,
-     "end_time": "2025-12-14T01:44:47.102820",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:41.465632",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [],
-   "source": [
-    "import pandas as pd\n",
-    "import numpy as np\n",
-    "import matplotlib.pyplot as plt\n",
-    "import seaborn as sns\n",
-    "import plotly.express as px\n",
-    "import plotly.graph_objects as go\n",
-    "from plotly.subplots import make_subplots\n",
-    "import warnings\n",
-    "warnings.filterwarnings('ignore')"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 3,
-   "id": "6c055d03",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:47.110075Z",
-     "iopub.status.busy": "2025-12-14T01:44:47.109551Z",
-     "iopub.status.idle": "2025-12-14T01:44:47.115399Z",
-     "shell.execute_reply": "2025-12-14T01:44:47.114514Z"
-    },
-    "papermill": {
-     "duration": 0.011191,
-     "end_time": "2025-12-14T01:44:47.116919",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:47.105728",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [],
-   "source": [
-    "# Set style\n",
-    "plt.style.use('dark_background')\n",
-    "sns.set_palette(\"husl\")"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 4,
-   "id": "8f076784",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:47.124138Z",
-     "iopub.status.busy": "2025-12-14T01:44:47.123832Z",
-     "iopub.status.idle": "2025-12-14T01:44:48.409957Z",
-     "shell.execute_reply": "2025-12-14T01:44:48.408900Z"
-    },
-    "papermill": {
-     "duration": 1.29189,
-     "end_time": "2025-12-14T01:44:48.411960",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:47.120070",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [],
-   "source": [
-    "# Load the data\n",
-    "df = pd.read_csv(f\"{sanjanaonteru_electric_vehicle_population_data_path}/Electric_Vehicle_Population_Data.csv\")"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 5,
-   "id": "dc50f1e6",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:48.419223Z",
-     "iopub.status.busy": "2025-12-14T01:44:48.418929Z",
-     "iopub.status.idle": "2025-12-14T01:44:48.471643Z",
-     "shell.execute_reply": "2025-12-14T01:44:48.470339Z"
-    },
-    "papermill": {
-     "duration": 0.058274,
-     "end_time": "2025-12-14T01:44:48.473239",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:48.414965",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "🚗 Washington State Electric Vehicle Population Analysis\n",
-      "======================================================================\n",
-      "📊 Total EVs in Dataset: 269,673\n",
-      "📅 Data Range: 1999 - 2026\n",
-      "🏭 Unique Manufacturers: 47\n",
-      "🚙 Unique Models: 183\n",
-      "======================================================================\n"
-     ]
-    }
-   ],
-   "source": [
-    "# Alternative: If the file has a different name, try:\n",
-    "# df = pd.read_csv('/kaggle/input/electric-vehicle-population-data/electric-vehicle-population-data.csv')\n",
-    "# Or list files to find exact name:\n",
-    "# import os\n",
-    "# print(os.listdir('/kaggle/input/electric-vehicle-population-data/'))\n",
-    "\n",
-    "# Data preprocessing\n",
-    "df['Model Year'] = pd.to_numeric(df['Model Year'], errors='coerce')\n",
-    "df.columns = df.columns.str.strip()\n",
-    "\n",
-    "print(\"🚗 Washington State Electric Vehicle Population Analysis\")\n",
-    "print(\"=\"*70)\n",
-    "print(f\"📊 Total EVs in Dataset: {len(df):,}\")\n",
-    "print(f\"📅 Data Range: {df['Model Year'].min():.0f} - {df['Model Year'].max():.0f}\")\n",
-    "print(f\"🏭 Unique Manufacturers: {df['Make'].nunique()}\")\n",
-    "print(f\"🚙 Unique Models: {df['Model'].nunique()}\")\n",
-    "print(\"=\"*70)"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 6,
-   "id": "83aef6a7",
-   "metadata": {
-    "_cell_guid": "b1076dfc-b9ad-4769-8c92-a6c4dae69d19",
-    "_uuid": "8f2839f25d086af736a60e9eeb907d3b93b6e0e5",
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:48.480841Z",
-     "iopub.status.busy": "2025-12-14T01:44:48.480549Z",
-     "iopub.status.idle": "2025-12-14T01:44:52.444841Z",
-     "shell.execute_reply": "2025-12-14T01:44:52.443682Z"
-    },
-    "papermill": {
-     "duration": 3.970095,
-     "end_time": "2025-12-14T01:44:52.446497",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:48.476402",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating interactive growth timeline...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"57b49d73-aa43-47cf-ba5f-43879d569233\" class=\"plotly-graph-div\" style=\"height:800px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"57b49d73-aa43-47cf-ba5f-43879d569233\")) {                    Plotly.newPlot(                        \"57b49d73-aa43-47cf-ba5f-43879d569233\",                        [{\"hovertemplate\":\"\\u003cb\\u003eYear %{x}\\u003c\\u002fb\\u003e\\u003cbr\\u003eNew EVs: %{y:,}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"marker\":{\"color\":[2,8,1,1,20,22,611,1425,4033,3263,4470,5166,8577,14179,10915,12154,20701,29627,60085,49200,35520,9693],\"colorbar\":{\"len\":0.4,\"title\":{\"text\":\"Count\"},\"y\":0.75},\"colorscale\":[[0.0,\"#440154\"],[0.1111111111111111,\"#482878\"],[0.2222222222222222,\"#3e4989\"],[0.3333333333333333,\"#31688e\"],[0.4444444444444444,\"#26828e\"],[0.5555555555555556,\"#1f9e89\"],[0.6666666666666666,\"#35b779\"],[0.7777777777777778,\"#6ece58\"],[0.8888888888888888,\"#b5de2b\"],[1.0,\"#fde725\"]],\"showscale\":true},\"name\":\"Annual Registrations\",\"text\":[2.0,8.0,1.0,1.0,20.0,22.0,611.0,1425.0,4033.0,3263.0,4470.0,5166.0,8577.0,14179.0,10915.0,12154.0,20701.0,29627.0,60085.0,49200.0,35520.0,9693.0],\"textposition\":\"outside\",\"x\":[1999,2000,2002,2003,2008,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"y\":[2,8,1,1,20,22,611,1425,4033,3263,4470,5166,8577,14179,10915,12154,20701,29627,60085,49200,35520,9693],\"type\":\"bar\",\"xaxis\":\"x\",\"yaxis\":\"y\"},{\"fill\":\"tozeroy\",\"fillcolor\":\"rgba(255, 107, 107, 0.2)\",\"hovertemplate\":\"\\u003cb\\u003eYear %{x}\\u003c\\u002fb\\u003e\\u003cbr\\u003eTotal EVs: %{y:,}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"line\":{\"color\":\"#FF6B6B\",\"shape\":\"spline\",\"width\":4},\"marker\":{\"size\":8,\"symbol\":\"diamond\"},\"mode\":\"lines+markers\",\"name\":\"Cumulative Total\",\"x\":[1999,2000,2002,2003,2008,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"y\":[2,10,11,12,32,54,665,2090,6123,9386,13856,19022,27599,41778,52693,64847,85548,115175,175260,224460,259980,269673],\"type\":\"scatter\",\"xaxis\":\"x2\",\"yaxis\":\"y2\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"xaxis\":{\"anchor\":\"y\",\"domain\":[0.0,1.0]},\"yaxis\":{\"anchor\":\"x\",\"domain\":[0.56,1.0],\"title\":{\"text\":\"New Registrations\"}},\"xaxis2\":{\"anchor\":\"y2\",\"domain\":[0.0,1.0],\"title\":{\"text\":\"Model Year\"}},\"yaxis2\":{\"anchor\":\"x2\",\"domain\":[0.0,0.44],\"title\":{\"text\":\"Cumulative EVs\"}},\"annotations\":[{\"font\":{\"size\":16},\"showarrow\":false,\"text\":\"📈 Annual EV Registrations\",\"x\":0.5,\"xanchor\":\"center\",\"xref\":\"paper\",\"y\":1.0,\"yanchor\":\"bottom\",\"yref\":\"paper\"},{\"font\":{\"size\":16},\"showarrow\":false,\"text\":\"📊 Cumulative EV Population\",\"x\":0.5,\"xanchor\":\"center\",\"xref\":\"paper\",\"y\":0.44,\"yanchor\":\"bottom\",\"yref\":\"paper\"}],\"title\":{\"font\":{\"size\":24},\"text\":\"⚡ Washington State EV Growth Story (1999-2026)\"},\"height\":800,\"showlegend\":true,\"hovermode\":\"x unified\"},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('57b49d73-aa43-47cf-ba5f-43879d569233');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "\n",
-    "# ============================================================================\n",
-    "# 1. STUNNING GROWTH TIMELINE WITH PLOTLY\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating interactive growth timeline...\")\n",
-    "\n",
-    "yearly_growth = df.groupby('Model Year').size().reset_index(name='count')\n",
-    "yearly_growth['cumulative'] = yearly_growth['count'].cumsum()\n",
-    "\n",
-    "fig = make_subplots(\n",
-    "    rows=2, cols=1,\n",
-    "    subplot_titles=('📈 Annual EV Registrations', '📊 Cumulative EV Population'),\n",
-    "    vertical_spacing=0.12,\n",
-    "    specs=[[{\"secondary_y\": False}], [{\"secondary_y\": False}]]\n",
-    ")\n",
-    "\n",
-    "# Annual registrations with gradient\n",
-    "fig.add_trace(\n",
-    "    go.Bar(\n",
-    "        x=yearly_growth['Model Year'],\n",
-    "        y=yearly_growth['count'],\n",
-    "        name='Annual Registrations',\n",
-    "        marker=dict(\n",
-    "            color=yearly_growth['count'],\n",
-    "            colorscale='Viridis',\n",
-    "            showscale=True,\n",
-    "            colorbar=dict(title=\"Count\", y=0.75, len=0.4)\n",
-    "        ),\n",
-    "        text=yearly_growth['count'],\n",
-    "        textposition='outside',\n",
-    "        hovertemplate='<b>Year %{x}</b><br>New EVs: %{y:,}<extra></extra>'\n",
-    "    ),\n",
-    "    row=1, col=1\n",
-    ")\n",
-    "\n",
-    "# Cumulative with smooth line\n",
-    "fig.add_trace(\n",
-    "    go.Scatter(\n",
-    "        x=yearly_growth['Model Year'],\n",
-    "        y=yearly_growth['cumulative'],\n",
-    "        name='Cumulative Total',\n",
-    "        mode='lines+markers',\n",
-    "        line=dict(color='#FF6B6B', width=4, shape='spline'),\n",
-    "        marker=dict(size=8, symbol='diamond'),\n",
-    "        fill='tozeroy',\n",
-    "        fillcolor='rgba(255, 107, 107, 0.2)',\n",
-    "        hovertemplate='<b>Year %{x}</b><br>Total EVs: %{y:,}<extra></extra>'\n",
-    "    ),\n",
-    "    row=2, col=1\n",
-    ")\n",
-    "\n",
-    "fig.update_xaxes(title_text=\"Model Year\", row=2, col=1)\n",
-    "fig.update_yaxes(title_text=\"New Registrations\", row=1, col=1)\n",
-    "fig.update_yaxes(title_text=\"Cumulative EVs\", row=2, col=1)\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    height=800,\n",
-    "    title_text=\"⚡ Washington State EV Growth Story (1999-2026)\",\n",
-    "    title_font_size=24,\n",
-    "    showlegend=True,\n",
-    "    template='plotly_dark',\n",
-    "    hovermode='x unified'\n",
-    ")\n",
-    "\n",
-    "fig.show()\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 7,
-   "id": "70ee444a",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:52.455910Z",
-     "iopub.status.busy": "2025-12-14T01:44:52.455176Z",
-     "iopub.status.idle": "2025-12-14T01:44:52.865995Z",
-     "shell.execute_reply": "2025-12-14T01:44:52.864980Z"
-    },
-    "papermill": {
-     "duration": 0.417148,
-     "end_time": "2025-12-14T01:44:52.867631",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:52.450483",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating manufacturer hierarchy visualization...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"c0b6f179-5102-44f2-b322-7cd6f20fe2ad\" class=\"plotly-graph-div\" style=\"height:700px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"c0b6f179-5102-44f2-b322-7cd6f20fe2ad\")) {                    Plotly.newPlot(                        \"c0b6f179-5102-44f2-b322-7cd6f20fe2ad\",                        [{\"branchvalues\":\"total\",\"hovertemplate\":\"\\u003cb\\u003e%{label}\\u003c\\u002fb\\u003e\\u003cbr\\u003eCount: %{value:,}\\u003cbr\\u003ePercentage: %{percentParent}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"labels\":[\"TESLA\",\"MODEL Y\",\"MODEL 3\",\"MODEL S\",\"MODEL X\",\"CYBERTRUCK\",\"CHEVROLET\",\"BOLT EV\",\"VOLT\",\"BOLT EUV\",\"EQUINOX\",\"BLAZER\",\"NISSAN\",\"LEAF\",\"ARIYA HATCHBACK\",\"ARIYA MPV\",\"FORD\",\"MUSTANG MACH-E\",\"F-150\",\"FUSION\",\"C-MAX\",\"ESCAPE\",\"KIA\",\"NIRO\",\"EV6\",\"EV9\",\"SPORTAGE\",\"SORENTO\",\"TOYOTA\",\"RAV4 PRIME (PHEV)\",\"PRIUS PRIME (PHEV)\",\"BZ4X\",\"PRIUS\",\"RAV4\",\"BMW\",\"X5\",\"I4\",\"I3\",\"IX\",\"330E\",\"HYUNDAI\",\"IONIQ 5\",\"KONA\",\"IONIQ 6\",\"TUCSON\",\"IONIQ\",\"RIVIAN\",\"R1S\",\"R1T\",\"EDV\",\"RCV\",\"VOLKSWAGEN\",\"ID.4\",\"E-GOLF\",\"ID. BUZZ\"],\"marker\":{\"cmid\":7975.672727272728,\"colorscale\":[[0.0,\"rgb(150,0,90)\"],[0.125,\"rgb(0,0,200)\"],[0.25,\"rgb(0,25,255)\"],[0.375,\"rgb(0,152,255)\"],[0.5,\"rgb(44,255,150)\"],[0.625,\"rgb(151,255,0)\"],[0.75,\"rgb(255,234,0)\"],[0.875,\"rgb(255,111,0)\"],[1.0,\"rgb(255,0,0)\"]],\"line\":{\"color\":\"white\",\"width\":2}},\"parents\":[\"\",\"TESLA\",\"TESLA\",\"TESLA\",\"TESLA\",\"TESLA\",\"\",\"CHEVROLET\",\"CHEVROLET\",\"CHEVROLET\",\"CHEVROLET\",\"CHEVROLET\",\"\",\"NISSAN\",\"NISSAN\",\"NISSAN\",\"\",\"FORD\",\"FORD\",\"FORD\",\"FORD\",\"FORD\",\"\",\"KIA\",\"KIA\",\"KIA\",\"KIA\",\"KIA\",\"\",\"TOYOTA\",\"TOYOTA\",\"TOYOTA\",\"TOYOTA\",\"TOYOTA\",\"\",\"BMW\",\"BMW\",\"BMW\",\"BMW\",\"BMW\",\"\",\"HYUNDAI\",\"HYUNDAI\",\"HYUNDAI\",\"HYUNDAI\",\"HYUNDAI\",\"\",\"RIVIAN\",\"RIVIAN\",\"RIVIAN\",\"RIVIAN\",\"\",\"VOLKSWAGEN\",\"VOLKSWAGEN\",\"VOLKSWAGEN\"],\"values\":[110635,56919,37383,7817,6792,1677,19106,7780,4574,2910,1742,1344,16103,13660,1694,749,14772,6130,3931,1659,1440,753,13479,4459,3730,1960,1684,975,11139,4506,3856,1773,941,58,11021,3374,2124,1902,1598,526,9609,5472,1571,954,711,294,8343,4726,2668,948,1,7345,5952,1048,345],\"type\":\"sunburst\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"title\":{\"text\":\"🌟 EV Manufacturer & Model Hierarchy\",\"font\":{\"size\":24}},\"height\":700},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('c0b6f179-5102-44f2-b322-7cd6f20fe2ad');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "# ============================================================================\n",
-    "# 2. MAGNIFICENT MANUFACTURER DOMINANCE SUNBURST\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating manufacturer hierarchy visualization...\")\n",
-    "\n",
-    "# Get top makes and their models\n",
-    "top_makes = df['Make'].value_counts().head(10)\n",
-    "make_model_data = []\n",
-    "\n",
-    "for make in top_makes.index:\n",
-    "    make_df = df[df['Make'] == make]\n",
-    "    make_count = len(make_df)\n",
-    "    make_model_data.append({\n",
-    "        'labels': make,\n",
-    "        'parents': '',\n",
-    "        'values': make_count,\n",
-    "        'type': 'make'\n",
-    "    })\n",
-    "    \n",
-    "    top_models = make_df['Model'].value_counts().head(5)\n",
-    "    for model, count in top_models.items():\n",
-    "        make_model_data.append({\n",
-    "            'labels': model,\n",
-    "            'parents': make,\n",
-    "            'values': count,\n",
-    "            'type': 'model'\n",
-    "        })\n",
-    "\n",
-    "sunburst_df = pd.DataFrame(make_model_data)\n",
-    "\n",
-    "fig = go.Figure(go.Sunburst(\n",
-    "    labels=sunburst_df['labels'],\n",
-    "    parents=sunburst_df['parents'],\n",
-    "    values=sunburst_df['values'],\n",
-    "    branchvalues=\"total\",\n",
-    "    marker=dict(\n",
-    "        colorscale='Rainbow',\n",
-    "        cmid=sunburst_df['values'].mean(),\n",
-    "        line=dict(color='white', width=2)\n",
-    "    ),\n",
-    "    hovertemplate='<b>%{label}</b><br>Count: %{value:,}<br>Percentage: %{percentParent}<extra></extra>'\n",
-    "))\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    title=\"🌟 EV Manufacturer & Model Hierarchy\",\n",
-    "    title_font_size=24,\n",
-    "    height=700,\n",
-    "    template='plotly_dark'\n",
-    ")\n",
-    "\n",
-    "fig.show()"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 8,
-   "id": "ed959af2",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:52.877003Z",
-     "iopub.status.busy": "2025-12-14T01:44:52.876663Z",
-     "iopub.status.idle": "2025-12-14T01:44:53.185907Z",
-     "shell.execute_reply": "2025-12-14T01:44:53.184795Z"
-    },
-    "papermill": {
-     "duration": 0.31593,
-     "end_time": "2025-12-14T01:44:53.187619",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:52.871689",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating geographic distribution map...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"c757cda3-3bb0-49f9-b1c9-4aa6c71d62c6\" class=\"plotly-graph-div\" style=\"height:600px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"c757cda3-3bb0-49f9-b1c9-4aa6c71d62c6\")) {                    Plotly.newPlot(                        \"c757cda3-3bb0-49f9-b1c9-4aa6c71d62c6\",                        [{\"branchvalues\":\"total\",\"customdata\":[[3724.0,1.38],[1687.0,0.63],[1647.0,0.61],[16543.0,6.13],[1410.0,0.52],[1133.0,0.42],[2961.0,1.1],[1431.0,0.53],[133634.0,49.55],[9045.0,3.35],[1216.0,0.45],[1339.0,0.5],[22256.0,8.25],[1240.0,0.46],[3188.0,1.18],[33412.0,12.39],[7586.0,2.81],[9847.0,3.65],[6570.0,2.44],[1835.0,0.68]],\"domain\":{\"x\":[0.0,1.0],\"y\":[0.0,1.0]},\"hovertemplate\":\"labels=%{label}\\u003cbr\\u003eCount_sum=%{value}\\u003cbr\\u003eparent=%{parent}\\u003cbr\\u003eid=%{id}\\u003cbr\\u003eCount=%{color:,}\\u003cbr\\u003ePercentage=%{customdata[1]:.2f}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"ids\":[\"Benton\",\"Chelan\",\"Clallam\",\"Clark\",\"Cowlitz\",\"Franklin\",\"Island\",\"Jefferson\",\"King\",\"Kitsap\",\"Lewis\",\"Mason\",\"Pierce\",\"San Juan\",\"Skagit\",\"Snohomish\",\"Spokane\",\"Thurston\",\"Whatcom\",\"Yakima\"],\"labels\":[\"Benton\",\"Chelan\",\"Clallam\",\"Clark\",\"Cowlitz\",\"Franklin\",\"Island\",\"Jefferson\",\"King\",\"Kitsap\",\"Lewis\",\"Mason\",\"Pierce\",\"San Juan\",\"Skagit\",\"Snohomish\",\"Spokane\",\"Thurston\",\"Whatcom\",\"Yakima\"],\"marker\":{\"coloraxis\":\"coloraxis\",\"colors\":[3724.0,1687.0,1647.0,16543.0,1410.0,1133.0,2961.0,1431.0,133634.0,9045.0,1216.0,1339.0,22256.0,1240.0,3188.0,33412.0,7586.0,9847.0,6570.0,1835.0],\"line\":{\"color\":\"white\",\"width\":3}},\"name\":\"\",\"parents\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"values\":[3724,1687,1647,16543,1410,1133,2961,1431,133634,9045,1216,1339,22256,1240,3188,33412,7586,9847,6570,1835],\"type\":\"treemap\",\"textfont\":{\"size\":14},\"textposition\":\"middle center\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"coloraxis\":{\"colorbar\":{\"title\":{\"text\":\"Count\"}},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"legend\":{\"tracegroupgap\":0},\"title\":{\"text\":\"🗺️ EV Distribution by County (Top 20)\",\"font\":{\"size\":24}},\"height\":600},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('c757cda3-3bb0-49f9-b1c9-4aa6c71d62c6');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "# ============================================================================\n",
-    "# 3. EPIC GEOGRAPHIC HEATMAP\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating geographic distribution map...\")\n",
-    "\n",
-    "county_stats = df['County'].value_counts().head(20).reset_index()\n",
-    "county_stats.columns = ['County', 'Count']\n",
-    "county_stats['Percentage'] = (county_stats['Count'] / len(df) * 100).round(2)\n",
-    "\n",
-    "fig = px.treemap(\n",
-    "    county_stats,\n",
-    "    path=['County'],\n",
-    "    values='Count',\n",
-    "    color='Count',\n",
-    "    color_continuous_scale='Plasma',\n",
-    "    title='🗺️ EV Distribution by County (Top 20)',\n",
-    "    hover_data={'Count': ':,', 'Percentage': ':.2f'}\n",
-    ")\n",
-    "\n",
-    "fig.update_traces(\n",
-    "    textposition='middle center',\n",
-    "    textfont_size=14,\n",
-    "    marker=dict(line=dict(color='white', width=3))\n",
-    ")\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    height=600,\n",
-    "    title_font_size=24,\n",
-    "    template='plotly_dark'\n",
-    ")\n",
-    "\n",
-    "fig.show()\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 9,
-   "id": "54eb83f2",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:53.197919Z",
-     "iopub.status.busy": "2025-12-14T01:44:53.197556Z",
-     "iopub.status.idle": "2025-12-14T01:44:53.326213Z",
-     "shell.execute_reply": "2025-12-14T01:44:53.325343Z"
-    },
-    "papermill": {
-     "duration": 0.135832,
-     "end_time": "2025-12-14T01:44:53.327883",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:53.192051",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating vehicle type evolution animation...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"a07c68ec-06d8-4f1d-9b4f-93fa6659d531\" class=\"plotly-graph-div\" style=\"height:600px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"a07c68ec-06d8-4f1d-9b4f-93fa6659d531\")) {                    Plotly.newPlot(                        \"a07c68ec-06d8-4f1d-9b4f-93fa6659d531\",                        [{\"alignmentgroup\":\"True\",\"hovertemplate\":\"Electric Vehicle Type=Battery Electric Vehicle (BEV)\\u003cbr\\u003eYear=%{x}\\u003cbr\\u003eNumber of Vehicles=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"Battery Electric Vehicle (BEV)\",\"marker\":{\"color\":\"#00D9FF\",\"pattern\":{\"shape\":\"\"}},\"name\":\"Battery Electric Vehicle (BEV)\",\"offsetgroup\":\"Battery Electric Vehicle (BEV)\",\"orientation\":\"v\",\"showlegend\":true,\"textposition\":\"auto\",\"x\":[2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"xaxis\":\"x\",\"y\":[20,549,636,2518,1591,3203,3504,4616,9871,8851,10322,16347,24747,52582,38546,27936,9267],\"yaxis\":\"y\",\"type\":\"bar\"},{\"alignmentgroup\":\"True\",\"hovertemplate\":\"Electric Vehicle Type=Plug-in Hybrid Electric Vehicle (PHEV)\\u003cbr\\u003eYear=%{x}\\u003cbr\\u003eNumber of Vehicles=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"Plug-in Hybrid Electric Vehicle (PHEV)\",\"marker\":{\"color\":\"#FF00E5\",\"pattern\":{\"shape\":\"\"}},\"name\":\"Plug-in Hybrid Electric Vehicle (PHEV)\",\"offsetgroup\":\"Plug-in Hybrid Electric Vehicle (PHEV)\",\"orientation\":\"v\",\"showlegend\":true,\"textposition\":\"auto\",\"x\":[2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"xaxis\":\"x\",\"y\":[2,62,789,1515,1672,1267,1662,3961,4308,2064,1832,4354,4880,7503,10654,7584,426],\"yaxis\":\"y\",\"type\":\"bar\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"xaxis\":{\"anchor\":\"y\",\"domain\":[0.0,1.0],\"title\":{\"text\":\"Year\"},\"tickmode\":\"linear\"},\"yaxis\":{\"anchor\":\"x\",\"domain\":[0.0,1.0],\"title\":{\"text\":\"Number of Vehicles\"}},\"legend\":{\"title\":{\"text\":\"Electric Vehicle Type\"},\"tracegroupgap\":0},\"title\":{\"text\":\"🔋 BEV vs PHEV Adoption Over Time\",\"font\":{\"size\":24}},\"barmode\":\"group\",\"height\":600,\"hovermode\":\"x unified\"},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('a07c68ec-06d8-4f1d-9b4f-93fa6659d531');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "\n",
-    "# ============================================================================\n",
-    "# 4. VEHICLE TYPE EVOLUTION - ANIMATED\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating vehicle type evolution animation...\")\n",
-    "\n",
-    "ev_type_year = df.groupby(['Model Year', 'Electric Vehicle Type']).size().reset_index(name='count')\n",
-    "ev_type_year = ev_type_year[ev_type_year['Model Year'] >= 2010]\n",
-    "\n",
-    "fig = px.bar(\n",
-    "    ev_type_year,\n",
-    "    x='Model Year',\n",
-    "    y='count',\n",
-    "    color='Electric Vehicle Type',\n",
-    "    title='🔋 BEV vs PHEV Adoption Over Time',\n",
-    "    labels={'count': 'Number of Vehicles', 'Model Year': 'Year'},\n",
-    "    color_discrete_map={\n",
-    "        'Battery Electric Vehicle (BEV)': '#00D9FF',\n",
-    "        'Plug-in Hybrid Electric Vehicle (PHEV)': '#FF00E5'\n",
-    "    },\n",
-    "    barmode='group',\n",
-    "    height=600\n",
-    ")\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    title_font_size=24,\n",
-    "    template='plotly_dark',\n",
-    "    xaxis=dict(tickmode='linear'),\n",
-    "    hovermode='x unified'\n",
-    ")\n",
-    "\n",
-    "fig.show()\n",
-    "\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 10,
-   "id": "40b9ddeb",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:53.339156Z",
-     "iopub.status.busy": "2025-12-14T01:44:53.338825Z",
-     "iopub.status.idle": "2025-12-14T01:44:53.397465Z",
-     "shell.execute_reply": "2025-12-14T01:44:53.396466Z"
-    },
-    "papermill": {
-     "duration": 0.066376,
-     "end_time": "2025-12-14T01:44:53.399353",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:53.332977",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating top cities visualization...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"5f872885-15af-4a16-bce8-20cb6b4686bc\" class=\"plotly-graph-div\" style=\"height:600px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"5f872885-15af-4a16-bce8-20cb6b4686bc\")) {                    Plotly.newPlot(                        \"5f872885-15af-4a16-bce8-20cb6b4686bc\",                        [{\"hovertemplate\":\"\\u003cb\\u003e%{y}\\u003c\\u002fb\\u003e\\u003cbr\\u003eEVs: %{x:,}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"marker\":{\"color\":[4269,4390,4457,4503,4562,5939,6342,7391,7506,7635,8911,9286,10038,13128,42191],\"colorbar\":{\"thickness\":20,\"title\":{\"text\":\"EVs\"}},\"colorscale\":[[0.0,\"#30123b\"],[0.07142857142857142,\"#4145ab\"],[0.14285714285714285,\"#4675ed\"],[0.21428571428571427,\"#39a2fc\"],[0.2857142857142857,\"#1bcfd4\"],[0.35714285714285715,\"#24eca6\"],[0.42857142857142855,\"#61fc6c\"],[0.5,\"#a4fc3b\"],[0.5714285714285714,\"#d1e834\"],[0.6428571428571429,\"#f3c63a\"],[0.7142857142857143,\"#fe9b2d\"],[0.7857142857142857,\"#f36315\"],[0.8571428571428571,\"#d93806\"],[0.9285714285714286,\"#b11901\"],[1.0,\"#7a0402\"]],\"showscale\":true},\"orientation\":\"h\",\"text\":[\"4,269 (1.58%)\",\"4,390 (1.63%)\",\"4,457 (1.65%)\",\"4,503 (1.67%)\",\"4,562 (1.69%)\",\"5,939 (2.2%)\",\"6,342 (2.35%)\",\"7,391 (2.74%)\",\"7,506 (2.78%)\",\"7,635 (2.83%)\",\"8,911 (3.3%)\",\"9,286 (3.44%)\",\"10,038 (3.72%)\",\"13,128 (4.87%)\",\"42,191 (15.65%)\"],\"textposition\":\"outside\",\"x\":[4269,4390,4457,4503,4562,5939,6342,7391,7506,7635,8911,9286,10038,13128,42191],\"y\":[\"Everett\",\"Lynnwood\",\"Bellingham\",\"Spokane\",\"Kent\",\"Tacoma\",\"Olympia\",\"Renton\",\"Sammamish\",\"Kirkland\",\"Bothell\",\"Redmond\",\"Vancouver\",\"Bellevue\",\"Seattle\"],\"type\":\"bar\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"title\":{\"text\":\"🏙️ Top 15 Cities by EV Population\",\"font\":{\"size\":24}},\"xaxis\":{\"title\":{\"text\":\"Number of EVs\"}},\"yaxis\":{\"title\":{\"text\":\"\"}},\"height\":600,\"showlegend\":false},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('5f872885-15af-4a16-bce8-20cb6b4686bc');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "# ============================================================================\n",
-    "# 5. TOP CITIES RACING BAR CHART\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating top cities visualization...\")\n",
-    "\n",
-    "city_stats = df['City'].value_counts().head(15).reset_index()\n",
-    "city_stats.columns = ['City', 'Count']\n",
-    "city_stats['Percentage'] = (city_stats['Count'] / len(df) * 100).round(2)\n",
-    "\n",
-    "fig = go.Figure()\n",
-    "\n",
-    "fig.add_trace(go.Bar(\n",
-    "    y=city_stats['City'][::-1],\n",
-    "    x=city_stats['Count'][::-1],\n",
-    "    orientation='h',\n",
-    "    marker=dict(\n",
-    "        color=city_stats['Count'][::-1],\n",
-    "        colorscale='Turbo',\n",
-    "        showscale=True,\n",
-    "        colorbar=dict(title=\"EVs\", thickness=20)\n",
-    "    ),\n",
-    "    text=[f\"{count:,} ({pct}%)\" for count, pct in zip(city_stats['Count'][::-1], city_stats['Percentage'][::-1])],\n",
-    "    textposition='outside',\n",
-    "    hovertemplate='<b>%{y}</b><br>EVs: %{x:,}<extra></extra>'\n",
-    "))\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    title='🏙️ Top 15 Cities by EV Population',\n",
-    "    title_font_size=24,\n",
-    "    xaxis_title='Number of EVs',\n",
-    "    yaxis_title='',\n",
-    "    height=600,\n",
-    "    template='plotly_dark',\n",
-    "    showlegend=False\n",
-    ")\n",
-    "\n",
-    "fig.show()"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 11,
-   "id": "2a8c6880",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:53.411687Z",
-     "iopub.status.busy": "2025-12-14T01:44:53.411375Z",
-     "iopub.status.idle": "2025-12-14T01:44:53.585159Z",
-     "shell.execute_reply": "2025-12-14T01:44:53.584235Z"
-    },
-    "papermill": {
-     "duration": 0.181837,
-     "end_time": "2025-12-14T01:44:53.587064",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:53.405227",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating market share evolution...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"c0d9393b-a39f-4688-a9fd-60893ed6276c\" class=\"plotly-graph-div\" style=\"height:600px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"c0d9393b-a39f-4688-a9fd-60893ed6276c\")) {                    Plotly.newPlot(                        \"c0d9393b-a39f-4688-a9fd-60893ed6276c\",                        [{\"fillpattern\":{\"shape\":\"\"},\"hovertemplate\":\"Manufacturer=CHEVROLET\\u003cbr\\u003eModel Year=%{x}\\u003cbr\\u003eAnnual Registrations=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"CHEVROLET\",\"line\":{\"color\":\"rgb(127, 60, 141)\",\"shape\":\"spline\"},\"marker\":{\"symbol\":\"circle\"},\"mode\":\"lines\",\"name\":\"CHEVROLET\",\"orientation\":\"v\",\"showlegend\":true,\"stackgroup\":\"1\",\"x\":[2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"xaxis\":\"x\",\"y\":[443,296,3001,1373,1421,1696,673,1233,3468,2035,1565,24],\"yaxis\":\"y\",\"type\":\"scatter\"},{\"fillpattern\":{\"shape\":\"\"},\"hovertemplate\":\"Manufacturer=FORD\\u003cbr\\u003eModel Year=%{x}\\u003cbr\\u003eAnnual Registrations=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"FORD\",\"line\":{\"color\":\"rgb(17, 165, 121)\",\"shape\":\"spline\"},\"marker\":{\"symbol\":\"circle\"},\"mode\":\"lines\",\"name\":\"FORD\",\"orientation\":\"v\",\"showlegend\":true,\"stackgroup\":\"1\",\"x\":[2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025],\"xaxis\":\"x\",\"y\":[511,714,616,156,129,60,939,1803,4232,2723,1761],\"yaxis\":\"y\",\"type\":\"scatter\"},{\"fillpattern\":{\"shape\":\"\"},\"hovertemplate\":\"Manufacturer=KIA\\u003cbr\\u003eModel Year=%{x}\\u003cbr\\u003eAnnual Registrations=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"KIA\",\"line\":{\"color\":\"rgb(57, 105, 172)\",\"shape\":\"spline\"},\"marker\":{\"symbol\":\"circle\"},\"mode\":\"lines\",\"name\":\"KIA\",\"orientation\":\"v\",\"showlegend\":true,\"stackgroup\":\"1\",\"x\":[2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"xaxis\":\"x\",\"y\":[23,337,185,290,669,590,83,2175,2488,3606,2537,496],\"yaxis\":\"y\",\"type\":\"scatter\"},{\"fillpattern\":{\"shape\":\"\"},\"hovertemplate\":\"Manufacturer=NISSAN\\u003cbr\\u003eModel Year=%{x}\\u003cbr\\u003eAnnual Registrations=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"NISSAN\",\"line\":{\"color\":\"rgb(242, 183, 1)\",\"shape\":\"spline\"},\"marker\":{\"symbol\":\"circle\"},\"mode\":\"lines\",\"name\":\"NISSAN\",\"orientation\":\"v\",\"showlegend\":true,\"stackgroup\":\"1\",\"x\":[2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025],\"xaxis\":\"x\",\"y\":[1630,1027,820,1149,1340,686,670,1143,1786,1063,1517],\"yaxis\":\"y\",\"type\":\"scatter\"},{\"fillpattern\":{\"shape\":\"\"},\"hovertemplate\":\"Manufacturer=TESLA\\u003cbr\\u003eModel Year=%{x}\\u003cbr\\u003eAnnual Registrations=%{y}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"legendgroup\":\"TESLA\",\"line\":{\"color\":\"rgb(231, 63, 116)\",\"shape\":\"spline\"},\"marker\":{\"symbol\":\"circle\"},\"mode\":\"lines\",\"name\":\"TESLA\",\"orientation\":\"v\",\"showlegend\":true,\"stackgroup\":\"1\",\"x\":[2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026],\"xaxis\":\"x\",\"y\":[943,1506,1597,7744,4502,6889,11313,13933,27373,15548,10175,7727],\"yaxis\":\"y\",\"type\":\"scatter\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"xaxis\":{\"anchor\":\"y\",\"domain\":[0.0,1.0],\"title\":{\"text\":\"Model Year\"},\"tickmode\":\"linear\"},\"yaxis\":{\"anchor\":\"x\",\"domain\":[0.0,1.0],\"title\":{\"text\":\"Annual Registrations\"}},\"legend\":{\"title\":{\"text\":\"Manufacturer\"},\"tracegroupgap\":0},\"title\":{\"text\":\"🏆 Top 5 Manufacturers: Market Evolution (2015-2026)\",\"font\":{\"size\":24}},\"height\":600,\"hovermode\":\"x unified\"},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('c0d9393b-a39f-4688-a9fd-60893ed6276c');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "# ============================================================================\n",
-    "# 6. BRAND BATTLE: MARKET SHARE EVOLUTION\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating market share evolution...\")\n",
-    "\n",
-    "top_brands = df['Make'].value_counts().head(5).index\n",
-    "brand_evolution = df[df['Make'].isin(top_brands)].groupby(['Model Year', 'Make']).size().reset_index(name='count')\n",
-    "brand_evolution = brand_evolution[brand_evolution['Model Year'] >= 2015]\n",
-    "\n",
-    "fig = px.area(\n",
-    "    brand_evolution,\n",
-    "    x='Model Year',\n",
-    "    y='count',\n",
-    "    color='Make',\n",
-    "    title='🏆 Top 5 Manufacturers: Market Evolution (2015-2026)',\n",
-    "    labels={'count': 'Annual Registrations', 'Make': 'Manufacturer'},\n",
-    "    color_discrete_sequence=px.colors.qualitative.Bold,\n",
-    "    height=600\n",
-    ")\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    title_font_size=24,\n",
-    "    template='plotly_dark',\n",
-    "    hovermode='x unified',\n",
-    "    xaxis=dict(tickmode='linear')\n",
-    ")\n",
-    "\n",
-    "fig.update_traces(mode='lines', line_shape='spline')\n",
-    "\n",
-    "fig.show()\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 12,
-   "id": "4949ec05",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:53.599646Z",
-     "iopub.status.busy": "2025-12-14T01:44:53.598933Z",
-     "iopub.status.idle": "2025-12-14T01:44:53.683525Z",
-     "shell.execute_reply": "2025-12-14T01:44:53.682669Z"
-    },
-    "papermill": {
-     "duration": 0.09265,
-     "end_time": "2025-12-14T01:44:53.685130",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:53.592480",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "🎨 Creating CAFV eligibility analysis...\n"
-     ]
-    },
-    {
-     "data": {
-      "text/html": [
-       "<html>\n",
-       "<head><meta charset=\"utf-8\" /></head>\n",
-       "<body>\n",
-       "    <div>            <script src=\"https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_SVG\"></script><script type=\"text/javascript\">if (window.MathJax && window.MathJax.Hub && window.MathJax.Hub.Config) {window.MathJax.Hub.Config({SVG: {font: \"STIX-Web\"}});}</script>                <script type=\"text/javascript\">window.PlotlyConfig = {MathJaxConfig: 'local'};</script>\n",
-       "        <script charset=\"utf-8\" src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>                <div id=\"626e05a3-028f-42e9-bf79-f2846e5ce38c\" class=\"plotly-graph-div\" style=\"height:600px; width:100%;\"></div>            <script type=\"text/javascript\">                                    window.PLOTLYENV=window.PLOTLYENV || {};                                    if (document.getElementById(\"626e05a3-028f-42e9-bf79-f2846e5ce38c\")) {                    Plotly.newPlot(                        \"626e05a3-028f-42e9-bf79-f2846e5ce38c\",                        [{\"hole\":0.5,\"hovertemplate\":\"\\u003cb\\u003e%{label}\\u003c\\u002fb\\u003e\\u003cbr\\u003eCount: %{value:,}\\u003cbr\\u003ePercentage: %{percent}\\u003cextra\\u003e\\u003c\\u002fextra\\u003e\",\"labels\":[\"Eligibility unknown as battery range has not been researched\",\"Clean Alternative Fuel Vehicle Eligible\",\"Not eligible due to low battery range\"],\"marker\":{\"colors\":[\"#FF6B6B\",\"#4ECDC4\",\"#45B7D1\"],\"line\":{\"color\":\"white\",\"width\":3}},\"textinfo\":\"label+percent\",\"textposition\":\"outside\",\"values\":[168734,76726,24213],\"type\":\"pie\"}],                        {\"template\":{\"data\":{\"barpolar\":[{\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"barpolar\"}],\"bar\":[{\"error_x\":{\"color\":\"#f2f5fa\"},\"error_y\":{\"color\":\"#f2f5fa\"},\"marker\":{\"line\":{\"color\":\"rgb(17,17,17)\",\"width\":0.5},\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"bar\"}],\"carpet\":[{\"aaxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"baxis\":{\"endlinecolor\":\"#A2B1C6\",\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"minorgridcolor\":\"#506784\",\"startlinecolor\":\"#A2B1C6\"},\"type\":\"carpet\"}],\"choropleth\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"choropleth\"}],\"contourcarpet\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"contourcarpet\"}],\"contour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"contour\"}],\"heatmapgl\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmapgl\"}],\"heatmap\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"heatmap\"}],\"histogram2dcontour\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2dcontour\"}],\"histogram2d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"histogram2d\"}],\"histogram\":[{\"marker\":{\"pattern\":{\"fillmode\":\"overlay\",\"size\":10,\"solidity\":0.2}},\"type\":\"histogram\"}],\"mesh3d\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"type\":\"mesh3d\"}],\"parcoords\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"parcoords\"}],\"pie\":[{\"automargin\":true,\"type\":\"pie\"}],\"scatter3d\":[{\"line\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatter3d\"}],\"scattercarpet\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattercarpet\"}],\"scattergeo\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattergeo\"}],\"scattergl\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scattergl\"}],\"scattermapbox\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scattermapbox\"}],\"scatterpolargl\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolargl\"}],\"scatterpolar\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterpolar\"}],\"scatter\":[{\"marker\":{\"line\":{\"color\":\"#283442\"}},\"type\":\"scatter\"}],\"scatterternary\":[{\"marker\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"type\":\"scatterternary\"}],\"surface\":[{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"},\"colorscale\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"type\":\"surface\"}],\"table\":[{\"cells\":{\"fill\":{\"color\":\"#506784\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"header\":{\"fill\":{\"color\":\"#2a3f5f\"},\"line\":{\"color\":\"rgb(17,17,17)\"}},\"type\":\"table\"}]},\"layout\":{\"annotationdefaults\":{\"arrowcolor\":\"#f2f5fa\",\"arrowhead\":0,\"arrowwidth\":1},\"autotypenumbers\":\"strict\",\"coloraxis\":{\"colorbar\":{\"outlinewidth\":0,\"ticks\":\"\"}},\"colorscale\":{\"diverging\":[[0,\"#8e0152\"],[0.1,\"#c51b7d\"],[0.2,\"#de77ae\"],[0.3,\"#f1b6da\"],[0.4,\"#fde0ef\"],[0.5,\"#f7f7f7\"],[0.6,\"#e6f5d0\"],[0.7,\"#b8e186\"],[0.8,\"#7fbc41\"],[0.9,\"#4d9221\"],[1,\"#276419\"]],\"sequential\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]],\"sequentialminus\":[[0.0,\"#0d0887\"],[0.1111111111111111,\"#46039f\"],[0.2222222222222222,\"#7201a8\"],[0.3333333333333333,\"#9c179e\"],[0.4444444444444444,\"#bd3786\"],[0.5555555555555556,\"#d8576b\"],[0.6666666666666666,\"#ed7953\"],[0.7777777777777778,\"#fb9f3a\"],[0.8888888888888888,\"#fdca26\"],[1.0,\"#f0f921\"]]},\"colorway\":[\"#636efa\",\"#EF553B\",\"#00cc96\",\"#ab63fa\",\"#FFA15A\",\"#19d3f3\",\"#FF6692\",\"#B6E880\",\"#FF97FF\",\"#FECB52\"],\"font\":{\"color\":\"#f2f5fa\"},\"geo\":{\"bgcolor\":\"rgb(17,17,17)\",\"lakecolor\":\"rgb(17,17,17)\",\"landcolor\":\"rgb(17,17,17)\",\"showlakes\":true,\"showland\":true,\"subunitcolor\":\"#506784\"},\"hoverlabel\":{\"align\":\"left\"},\"hovermode\":\"closest\",\"mapbox\":{\"style\":\"dark\"},\"paper_bgcolor\":\"rgb(17,17,17)\",\"plot_bgcolor\":\"rgb(17,17,17)\",\"polar\":{\"angularaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"radialaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"scene\":{\"xaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"yaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"},\"zaxis\":{\"backgroundcolor\":\"rgb(17,17,17)\",\"gridcolor\":\"#506784\",\"gridwidth\":2,\"linecolor\":\"#506784\",\"showbackground\":true,\"ticks\":\"\",\"zerolinecolor\":\"#C8D4E3\"}},\"shapedefaults\":{\"line\":{\"color\":\"#f2f5fa\"}},\"sliderdefaults\":{\"bgcolor\":\"#C8D4E3\",\"bordercolor\":\"rgb(17,17,17)\",\"borderwidth\":1,\"tickwidth\":0},\"ternary\":{\"aaxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"baxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"},\"bgcolor\":\"rgb(17,17,17)\",\"caxis\":{\"gridcolor\":\"#506784\",\"linecolor\":\"#506784\",\"ticks\":\"\"}},\"title\":{\"x\":0.05},\"updatemenudefaults\":{\"bgcolor\":\"#506784\",\"borderwidth\":0},\"xaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2},\"yaxis\":{\"automargin\":true,\"gridcolor\":\"#283442\",\"linecolor\":\"#506784\",\"ticks\":\"\",\"title\":{\"standoff\":15},\"zerolinecolor\":\"#283442\",\"zerolinewidth\":2}}},\"title\":{\"text\":\"🌱 Clean Alternative Fuel Vehicle (CAFV) Eligibility\",\"font\":{\"size\":24}},\"height\":600,\"annotations\":[{\"showarrow\":false,\"text\":\"CAFV\",\"x\":0.5,\"y\":0.5,\"font\":{\"size\":30}}]},                        {\"responsive\": true}                    ).then(function(){\n",
-       "                            \n",
-       "var gd = document.getElementById('626e05a3-028f-42e9-bf79-f2846e5ce38c');\n",
-       "var x = new MutationObserver(function (mutations, observer) {{\n",
-       "        var display = window.getComputedStyle(gd).display;\n",
-       "        if (!display || display === 'none') {{\n",
-       "            console.log([gd, 'removed!']);\n",
-       "            Plotly.purge(gd);\n",
-       "            observer.disconnect();\n",
-       "        }}\n",
-       "}});\n",
-       "\n",
-       "// Listen for the removal of the full notebook cells\n",
-       "var notebookContainer = gd.closest('#notebook-container');\n",
-       "if (notebookContainer) {{\n",
-       "    x.observe(notebookContainer, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "// Listen for the clearing of the current output cell\n",
-       "var outputEl = gd.closest('.output');\n",
-       "if (outputEl) {{\n",
-       "    x.observe(outputEl, {childList: true});\n",
-       "}}\n",
-       "\n",
-       "                        })                };                            </script>        </div>\n",
-       "</body>\n",
-       "</html>"
-      ]
-     },
-     "metadata": {},
-     "output_type": "display_data"
-    }
-   ],
-   "source": [
-    "\n",
-    "# ============================================================================\n",
-    "# 7. CAFV ELIGIBILITY BREAKDOWN\n",
-    "# ============================================================================\n",
-    "print(\"\\n🎨 Creating CAFV eligibility analysis...\")\n",
-    "\n",
-    "cafv_data = df['Clean Alternative Fuel Vehicle (CAFV) Eligibility'].value_counts()\n",
-    "\n",
-    "fig = go.Figure(data=[go.Pie(\n",
-    "    labels=cafv_data.index,\n",
-    "    values=cafv_data.values,\n",
-    "    hole=0.5,\n",
-    "    marker=dict(\n",
-    "        colors=['#FF6B6B', '#4ECDC4', '#45B7D1'],\n",
-    "        line=dict(color='white', width=3)\n",
-    "    ),\n",
-    "    textposition='outside',\n",
-    "    textinfo='label+percent',\n",
-    "    hovertemplate='<b>%{label}</b><br>Count: %{value:,}<br>Percentage: %{percent}<extra></extra>'\n",
-    ")])\n",
-    "\n",
-    "fig.update_layout(\n",
-    "    title='🌱 Clean Alternative Fuel Vehicle (CAFV) Eligibility',\n",
-    "    title_font_size=24,\n",
-    "    height=600,\n",
-    "    template='plotly_dark',\n",
-    "    annotations=[dict(text='CAFV', x=0.5, y=0.5, font_size=30, showarrow=False)]\n",
-    ")\n",
-    "\n",
-    "fig.show()\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": 13,
-   "id": "486aa548",
-   "metadata": {
-    "execution": {
-     "iopub.execute_input": "2025-12-14T01:44:53.697996Z",
-     "iopub.status.busy": "2025-12-14T01:44:53.697664Z",
-     "iopub.status.idle": "2025-12-14T01:44:53.779486Z",
-     "shell.execute_reply": "2025-12-14T01:44:53.778429Z"
-    },
-    "papermill": {
-     "duration": 0.090364,
-     "end_time": "2025-12-14T01:44:53.781331",
-     "exception": false,
-     "start_time": "2025-12-14T01:44:53.690967",
-     "status": "completed"
-    },
-    "tags": []
-   },
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "\n",
-      "📊 Statistical Summary:\n",
-      "======================================================================\n",
-      "\n",
-      "🔋 Vehicle Type Distribution:\n",
-      "  Battery Electric Vehicle (BEV): 215,138 (79.8%)\n",
-      "  Plug-in Hybrid Electric Vehicle (PHEV): 54,535 (20.2%)\n",
-      "\n",
-      "🏭 Top 5 Manufacturers:\n",
-      "  1. TESLA: 110,635 (41.0%)\n",
-      "  2. CHEVROLET: 19,106 (7.1%)\n",
-      "  3. NISSAN: 16,103 (6.0%)\n",
-      "  4. FORD: 14,772 (5.5%)\n",
-      "  5. KIA: 13,479 (5.0%)\n",
-      "\n",
-      "🚙 Top 5 Models:\n",
-      "  1. MODEL Y: 56,919 (21.1%)\n",
-      "  2. MODEL 3: 37,383 (13.9%)\n",
-      "  3. LEAF: 13,660 (5.1%)\n",
-      "  4. MODEL S: 7,817 (2.9%)\n",
-      "  5. BOLT EV: 7,780 (2.9%)\n",
-      "\n",
-      "📈 Recent Growth (2020-2026): 216,980 EVs (80.5% of total)\n",
-      "\n",
-      "======================================================================\n",
-      "✨ Analysis Complete! Ready for insights and predictions! ⚡\n",
-      "======================================================================\n"
-     ]
-    }
-   ],
-   "source": [
-    "# ============================================================================\n",
-    "# 8. STATISTICAL SUMMARY DASHBOARD\n",
-    "# ============================================================================\n",
-    "print(\"\\n📊 Statistical Summary:\")\n",
-    "print(\"=\"*70)\n",
-    "\n",
-    "ev_type_dist = df['Electric Vehicle Type'].value_counts()\n",
-    "print(f\"\\n🔋 Vehicle Type Distribution:\")\n",
-    "for vtype, count in ev_type_dist.items():\n",
-    "    print(f\"  {vtype}: {count:,} ({count/len(df)*100:.1f}%)\")\n",
-    "\n",
-    "print(f\"\\n🏭 Top 5 Manufacturers:\")\n",
-    "for idx, (make, count) in enumerate(df['Make'].value_counts().head(5).items(), 1):\n",
-    "    print(f\"  {idx}. {make}: {count:,} ({count/len(df)*100:.1f}%)\")\n",
-    "\n",
-    "print(f\"\\n🚙 Top 5 Models:\")\n",
-    "for idx, (model, count) in enumerate(df['Model'].value_counts().head(5).items(), 1):\n",
-    "    print(f\"  {idx}. {model}: {count:,} ({count/len(df)*100:.1f}%)\")\n",
-    "\n",
-    "recent_growth = yearly_growth[yearly_growth['Model Year'] >= 2020]['count'].sum()\n",
-    "print(f\"\\n📈 Recent Growth (2020-2026): {recent_growth:,} EVs ({recent_growth/len(df)*100:.1f}% of total)\")\n",
-    "\n",
-    "print(\"\\n\" + \"=\"*70)\n",
-    "print(\"✨ Analysis Complete! Ready for insights and predictions! ⚡\")\n",
-    "print(\"=\"*70)"
-   ]
-  }
- ],
- "metadata": {
-  "kaggle": {
-   "accelerator": "none",
-   "dataSources": [
-    {
-     "datasetId": 9015909,
-     "sourceId": 14146653,
-     "sourceType": "datasetVersion"
-    }
-   ],
-   "dockerImageVersionId": 31192,
-   "isGpuEnabled": false,
-   "isInternetEnabled": true,
-   "language": "python",
-   "sourceType": "notebook"
-  },
-  "kernelspec": {
-   "display_name": "Python 3",
-   "language": "python",
-   "name": "python3"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.11.13"
-  },
-  "papermill": {
-   "default_parameters": {},
-   "duration": 19.519997,
-   "end_time": "2025-12-14T01:44:54.909621",
-   "environment_variables": {},
-   "exception": null,
-   "input_path": "__notebook__.ipynb",
-   "output_path": "__notebook__.ipynb",
-   "parameters": {},
-   "start_time": "2025-12-14T01:44:35.389624",
-   "version": "2.6.0"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 5
-}
+    barmode='group',
+    height=600
+)
+
+fig.update_layout(
+    title_font_size=24,
+    template='plotly_dark',
+    xaxis=dict(tickmode='linear'),
+    hovermode='x unified'
+)
+
+fig.show()
+
+
+
+# %% [code]
+# ============================================================================
+# 5. TOP CITIES RACING BAR CHART
+# ============================================================================
+print("\n🎨 Creating top cities visualization...")
+
+city_stats = df['City'].value_counts().head(15).reset_index()
+city_stats.columns = ['City', 'Count']
+city_stats['Percentage'] = (city_stats['Count'] / len(df) * 100).round(2)
+
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    y=city_stats['City'][::-1],
+    x=city_stats['Count'][::-1],
+    orientation='h',
+    marker=dict(
+        color=city_stats['Count'][::-1],
+        colorscale='Turbo',
+        showscale=True,
+        colorbar=dict(title="EVs", thickness=20)
+    ),
+    text=[f"{count:,} ({pct}%)" for count, pct in zip(city_stats['Count'][::-1], city_stats['Percentage'][::-1])],
+    textposition='outside',
+    hovertemplate='<b>%{y}</b><br>EVs: %{x:,}<extra></extra>'
+))
+
+fig.update_layout(
+    title='🏙️ Top 15 Cities by EV Population',
+    title_font_size=24,
+    xaxis_title='Number of EVs',
+    yaxis_title='',
+    height=600,
+    template='plotly_dark',
+    showlegend=False
+)
+
+fig.show()
+
+# %% [code]
+# ============================================================================
+# 6. BRAND BATTLE: MARKET SHARE EVOLUTION
+# ============================================================================
+print("\n🎨 Creating market share evolution...")
+
+top_brands = df['Make'].value_counts().head(5).index
+brand_evolution = df[df['Make'].isin(top_brands)].groupby(['Model Year', 'Make']).size().reset_index(name='count')
+brand_evolution = brand_evolution[brand_evolution['Model Year'] >= 2015]
+
+fig = px.area(
+    brand_evolution,
+    x='Model Year',
+    y='count',
+    color='Make',
+    title='🏆 Top 5 Manufacturers: Market Evolution (2015-2026)',
+    labels={'count': 'Annual Registrations', 'Make': 'Manufacturer'},
+    color_discrete_sequence=px.colors.qualitative.Bold,
+    height=600
+)
+
+fig.update_layout(
+    title_font_size=24,
+    template='plotly_dark',
+    hovermode='x unified',
+    xaxis=dict(tickmode='linear')
+)
+
+fig.update_traces(mode='lines', line_shape='spline')
+
+fig.show()
+
+
+# %% [code]
+
+# ============================================================================
+# 7. CAFV ELIGIBILITY BREAKDOWN
+# ============================================================================
+print("\n🎨 Creating CAFV eligibility analysis...")
+
+cafv_data = df['Clean Alternative Fuel Vehicle (CAFV) Eligibility'].value_counts()
+
+fig = go.Figure(data=[go.Pie(
+    labels=cafv_data.index,
+    values=cafv_data.values,
+    hole=0.5,
+    marker=dict(
+        colors=['#FF6B6B', '#4ECDC4', '#45B7D1'],
+        line=dict(color='white', width=3)
+    ),
+    textposition='outside',
+    textinfo='label+percent',
+    hovertemplate='<b>%{label}</b><br>Count: %{value:,}<br>Percentage: %{percent}<extra></extra>'
+)])
+
+fig.update_layout(
+    title='🌱 Clean Alternative Fuel Vehicle (CAFV) Eligibility',
+    title_font_size=24,
+    height=600,
+    template='plotly_dark',
+    annotations=[dict(text='CAFV', x=0.5, y=0.5, font_size=30, showarrow=False)]
+)
+
+fig.show()
+
+
+# %% [code]
+# ============================================================================
+# 8. STATISTICAL SUMMARY DASHBOARD
+# ============================================================================
+print("\n📊 Statistical Summary:")
+print("="*70)
+
+ev_type_dist = df['Electric Vehicle Type'].value_counts()
+print(f"\n🔋 Vehicle Type Distribution:")
+for vtype, count in ev_type_dist.items():
+    print(f"  {vtype}: {count:,} ({count/len(df)*100:.1f}%)")
+
+print(f"\n🏭 Top 5 Manufacturers:")
+for idx, (make, count) in enumerate(df['Make'].value_counts().head(5).items(), 1):
+    print(f"  {idx}. {make}: {count:,} ({count/len(df)*100:.1f}%)")
+
+print(f"\n🚙 Top 5 Models:")
+for idx, (model, count) in enumerate(df['Model'].value_counts().head(5).items(), 1):
+    print(f"  {idx}. {model}: {count:,} ({count/len(df)*100:.1f}%)")
+
+recent_growth = yearly_growth[yearly_growth['Model Year'] >= 2020]['count'].sum()
+print(f"\n📈 Recent Growth (2020-2026): {recent_growth:,} EVs ({recent_growth/len(df)*100:.1f}% of total)")
+
+print("\n" + "="*70)
+print("✨ Analysis Complete! Ready for insights and predictions! ⚡")
+print("="*70)
